@@ -1,13 +1,21 @@
 package logging
 
 import (
+	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"log"
 	"os"
+	"sync"
 )
 
+
+type WriteSyncer = zapcore.WriteSyncer
+var defaultOutput WriteSyncer = os.Stderr
+
 type Logger interface {
+	Output() WriteSyncer
+	SetOutput(WriteSyncer)
 	Debug(args ...interface{})
 	Info(args ...interface{})
 	Warn(args ...interface{})
@@ -29,66 +37,161 @@ type Logger interface {
 	DPanicw(msg string, keysAndValues ...interface{})
 	Panicw(msg string, keysAndValues ...interface{})
 	Fatalw(msg string, keysAndValues ...interface{})
-	StdLogger() *log.Logger
-	ZapLogger() *zap.Logger
-	ZapSugaredLogger() *zap.SugaredLogger
+	StdLog() *log.Logger
+	Format() Format
+	SetFormat(Format)
+	Level() Level
+	SetLevel(Level)
+	LogRUs() *logrus.Logger
+	Zap() *zap.Logger
+	ZapSugared() *zap.SugaredLogger
 	With(args ...interface{}) Logger
 }
 
-type Option func(*logger)
 
-func WithZap(zapLogger *zap.Logger) Option {
-	return func(l *logger) {
-		l.zapLogger = zapLogger
-	}
-}
-
-func WithZapSugared(sugar *zap.SugaredLogger) Option {
-	return func(l *logger) {
-		l.SugaredLogger = sugar
-		if l.SugaredLogger == nil {
-			l.zapLogger = nil
-		} else {
-			l.zapLogger = sugar.Desugar()
-		}
-	}
-}
-
-type logger struct {
-	*zap.SugaredLogger
-	zapLogger *zap.Logger
-	stdLogger *log.Logger
-}
-
-func (l logger) With(args ...interface{}) Logger {
-	sl := l.ZapSugaredLogger().With(args...)
-	return NewLogger(WithZapSugared(sl))
-}
-
-func (l logger) ZapSugaredLogger() *zap.SugaredLogger {
-	return l.SugaredLogger
-}
-func (l logger) ZapLogger() *zap.Logger {
-	return l.zapLogger
-}
-
-func (l logger) StdLogger() *log.Logger {
-	return l.stdLogger
-}
 
 func NewLogger(options ...Option) Logger {
-	l := &logger{}
-	for _, o := range options {
-		o(l)
+	l := &logger{
+		level:DefaultLevel,
+		format:DefaultFormat,
+		preset:DefaultPreset,
+		output: defaultOutput,
+		zapMutex: &sync.RWMutex{},
+		logrusMutex: &sync.RWMutex{},
+		stdMutex: &sync.RWMutex{},
 	}
-	if l.zapLogger == nil {
+
+	// default zap pre-optiosn
+	if l.zap == nil {
 		cfg := zap.NewDevelopmentEncoderConfig()
 		encoder := zapcore.NewConsoleEncoder(cfg)
 		atomicLevel := zap.NewAtomicLevel()
 		atomicLevel.SetLevel(zapcore.ErrorLevel)
-		l.zapLogger = zap.New(zapcore.NewCore(encoder, zapcore.Lock(os.Stderr), atomicLevel))
+		l.zapAtomicLevel = &atomicLevel
+		l.zap = zap.New(zapcore.NewCore(encoder, zapcore.Lock(os.Stderr), atomicLevel))
+		l.format = FormatText
 	}
-	l.SugaredLogger = l.zapLogger.Sugar()
-	l.stdLogger = zap.NewStdLog(l.zapLogger)
+
+	l.SugaredLogger = l.zap.Sugar()
+	l.std = zap.NewStdLog(l.zap)
+	l.logrus = logrus.New()
+	l.logrus.SetFormatter(l.Format().LogRUsFormatter())
+	for _, o := range options {
+		o(l)
+	}
+	// to set logrus and atomic levels /formats  if necessary
+	l.SetFormat(l.format)
+	l.SetLevel(l.level)
 	return l
+}
+
+type logger struct {
+	*zap.SugaredLogger
+	zap    *zap.Logger
+	zapAtomicLevel *zap.AtomicLevel
+	std    *log.Logger
+	logrus	*logrus.Logger
+	format Format
+	level  Level
+	output WriteSyncer
+	preset Preset
+	zapMutex *sync.RWMutex
+	logrusMutex *sync.RWMutex
+	stdMutex *sync.RWMutex
+}
+
+func (l *logger) resetZap()  {
+	l.zapMutex.Lock()
+	defer l.zapMutex.Unlock()
+	cfg := l.Preset().ZapEncoderConfig()
+	encoder := l.Format().ZapEncoder(cfg)
+	atomicLevel := zap.NewAtomicLevel()
+	atomicLevel.SetLevel(l.Level().Zap())
+	l.zap = zap.New(zapcore.NewCore(encoder, zapcore.Lock(l.Output()), atomicLevel))
+	l.SugaredLogger = l.zap.Sugar()
+}
+
+func (l *logger) Output() WriteSyncer {
+	return l.output
+}
+
+func (l *logger) SetOutput(w WriteSyncer) {
+	if w == nil {
+		return
+	}
+	l.output = w
+	l.LogRUs().SetOutput(w)
+	l.resetZap()
+}
+
+func (l *logger) Format() Format {
+	return l.format
+}
+
+func (l *logger) SetFormat(format Format) {
+	if !format.IsAFormat() {
+		return
+	}
+	l.format = format
+	l.LogRUs().SetFormatter(format.LogRUsFormatter())
+	l.resetZap()
+}
+
+func (l *logger) Preset() Preset {
+	return l.preset
+}
+
+func (l *logger) SetPreset(p Preset) {
+	 l.preset = p
+
+}
+func (l *logger) Level() Level {
+	return l.level
+}
+
+func (l *logger) SetLevel(level Level) {
+	if !level.IsALevel() {
+		return
+	}
+	l.level = level
+	if l.zapAtomicLevel != nil {
+		atomicLevel := *l.zapAtomicLevel
+		atomicLevel.SetLevel(level.Zap())
+	} else {
+		l.resetZap()
+	}
+	l.LogRUs().SetLevel(level.LogRUs())
+}
+
+func (l *logger) With(args ...interface{}) Logger {
+	sl := l.ZapSugared().With(args...)
+	return NewLogger(
+		WithLevel(l.Level()),
+		WithPreset(l.Preset()),
+		WithFormat(l.Format()),
+		WithOutput(l.Output()),
+		WithZap(sl.Desugar()),
+		WithZapSugared(sl))
+}
+
+func (l *logger) ZapSugared() *zap.SugaredLogger {
+	l.zapMutex.RLock()
+	defer l.zapMutex.RUnlock()
+	return l.SugaredLogger
+}
+
+func (l *logger) Zap() *zap.Logger {
+	l.zapMutex.RLock()
+	defer l.zapMutex.RUnlock()
+	return l.zap
+}
+
+func (l *logger) StdLog() *log.Logger {
+	return l.std
+}
+
+func (l *logger) LogRUs() *logrus.Logger {
+	l.logrusMutex.RLock()
+	defer l.logrusMutex.RUnlock()
+	return l.logrus
 }
