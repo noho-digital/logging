@@ -37,7 +37,7 @@ type Logger interface {
 	DPanicw(msg string, keysAndValues ...interface{})
 	Panicw(msg string, keysAndValues ...interface{})
 	Fatalw(msg string, keysAndValues ...interface{})
-	StdLog() *log.Logger
+	StdLogger() *log.Logger
 	Format() Format
 	SetFormat(Format)
 	Level() Level
@@ -186,7 +186,7 @@ func (l *logger) Zap() *zap.Logger {
 	return l.zap
 }
 
-func (l *logger) StdLog() *log.Logger {
+func (l *logger) StdLogger() *log.Logger {
 	return l.std
 }
 
