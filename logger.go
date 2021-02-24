@@ -42,9 +42,9 @@ type Logger interface {
 	SetFormat(Format)
 	Level() Level
 	SetLevel(Level)
-	LogRUs() *logrus.Logger
-	Zap() *zap.Logger
-	ZapSugared() *zap.SugaredLogger
+	LogRUsLogger() *logrus.Logger
+	ZapLogger() *zap.Logger
+	ZapSugaredLogger() *zap.SugaredLogger
 	With(args ...interface{}) Logger
 }
 
@@ -120,7 +120,7 @@ func (l *logger) SetOutput(w WriteSyncer) {
 		return
 	}
 	l.output = w
-	l.LogRUs().SetOutput(w)
+	l.LogRUsLogger().SetOutput(w)
 	l.resetZap()
 }
 
@@ -133,7 +133,7 @@ func (l *logger) SetFormat(format Format) {
 		return
 	}
 	l.format = format
-	l.LogRUs().SetFormatter(format.LogRUsFormatter())
+	l.LogRUsLogger().SetFormatter(format.LogRUsFormatter())
 	l.resetZap()
 }
 
@@ -160,11 +160,11 @@ func (l *logger) SetLevel(level Level) {
 	} else {
 		l.resetZap()
 	}
-	l.LogRUs().SetLevel(level.LogRUs())
+	l.LogRUsLogger().SetLevel(level.LogRUs())
 }
 
 func (l *logger) With(args ...interface{}) Logger {
-	sl := l.ZapSugared().With(args...)
+	sl := l.ZapSugaredLogger().With(args...)
 	return NewLogger(
 		WithLevel(l.Level()),
 		WithPreset(l.Preset()),
@@ -174,13 +174,13 @@ func (l *logger) With(args ...interface{}) Logger {
 		WithZapSugared(sl))
 }
 
-func (l *logger) ZapSugared() *zap.SugaredLogger {
+func (l *logger) ZapSugaredLogger() *zap.SugaredLogger {
 	l.zapMutex.RLock()
 	defer l.zapMutex.RUnlock()
 	return l.SugaredLogger
 }
 
-func (l *logger) Zap() *zap.Logger {
+func (l *logger) ZapLogger() *zap.Logger {
 	l.zapMutex.RLock()
 	defer l.zapMutex.RUnlock()
 	return l.zap
@@ -190,7 +190,7 @@ func (l *logger) StdLogger() *log.Logger {
 	return l.std
 }
 
-func (l *logger) LogRUs() *logrus.Logger {
+func (l *logger) LogRUsLogger() *logrus.Logger {
 	l.logrusMutex.RLock()
 	defer l.logrusMutex.RUnlock()
 	return l.logrus
