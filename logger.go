@@ -75,13 +75,13 @@ func NewLogger(options ...Option) Logger {
 	l.std = zap.NewStdLog(l.zap)
 	l.logrus = logrus.New()
 	l.logrus.SetFormatter(l.Format().LogRUsFormatter())
-	for _, o := range options {
-		o(l)
-	}
+
 	// to set logrus and atomic levels /formats  if necessary
 	l.SetFormat(l.format)
 	l.SetLevel(l.level)
-
+	for _, o := range options {
+		o(l)
+	}
 	return l
 }
 
