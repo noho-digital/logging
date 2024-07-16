@@ -3,7 +3,8 @@ module github.com/noho-digital/logging
 go 1.15
 
 require (
-	github.com/noho-digital/enumer v1.4.0 // indirect
-	github.com/sirupsen/logrus v1.7.1
-	go.uber.org/zap v1.16.0
+	github.com/sirupsen/logrus v1.9.3
+	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.27.0
+	golang.org/x/sys v0.22.0 // indirect
 )
