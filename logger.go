@@ -1,16 +1,17 @@
 package logging
 
 import (
-	"github.com/sirupsen/logrus"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"log"
 	"os"
 	"sync"
+
+	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-
 type WriteSyncer = zapcore.WriteSyncer
+
 var defaultOutput WriteSyncer = os.Stderr
 
 type Logger interface {
@@ -48,17 +49,15 @@ type Logger interface {
 	With(args ...interface{}) Logger
 }
 
-
-
 func NewLogger(options ...Option) Logger {
 	l := &logger{
-		level:DefaultLevel,
-		format:DefaultFormat,
-		preset:DefaultPreset,
-		output: defaultOutput,
-		zapMutex: &sync.RWMutex{},
+		level:       DefaultLevel,
+		format:      DefaultFormat,
+		preset:      DefaultPreset,
+		output:      defaultOutput,
+		zapMutex:    &sync.RWMutex{},
 		logrusMutex: &sync.RWMutex{},
-		stdMutex: &sync.RWMutex{},
+		stdMutex:    &sync.RWMutex{},
 	}
 
 	// default zap pre-optiosn
@@ -76,31 +75,32 @@ func NewLogger(options ...Option) Logger {
 	l.std = zap.NewStdLog(l.zap)
 	l.logrus = logrus.New()
 	l.logrus.SetFormatter(l.Format().LogRUsFormatter())
-	for _, o := range options {
-		o(l)
-	}
+
 	// to set logrus and atomic levels /formats  if necessary
 	l.SetFormat(l.format)
 	l.SetLevel(l.level)
+	for _, o := range options {
+		o(l)
+	}
 	return l
 }
 
 type logger struct {
 	*zap.SugaredLogger
-	zap    *zap.Logger
+	zap            *zap.Logger
 	zapAtomicLevel *zap.AtomicLevel
-	std    *log.Logger
-	logrus	*logrus.Logger
-	format Format
-	level  Level
-	output WriteSyncer
-	preset Preset
-	zapMutex *sync.RWMutex
-	logrusMutex *sync.RWMutex
-	stdMutex *sync.RWMutex
+	std            *log.Logger
+	logrus         *logrus.Logger
+	format         Format
+	level          Level
+	output         WriteSyncer
+	preset         Preset
+	zapMutex       *sync.RWMutex
+	logrusMutex    *sync.RWMutex
+	stdMutex       *sync.RWMutex
 }
 
-func (l *logger) resetZap()  {
+func (l *logger) resetZap() {
 	l.zapMutex.Lock()
 	defer l.zapMutex.Unlock()
 	cfg := l.Preset().ZapEncoderConfig()
@@ -142,7 +142,7 @@ func (l *logger) Preset() Preset {
 }
 
 func (l *logger) SetPreset(p Preset) {
-	 l.preset = p
+	l.preset = p
 
 }
 func (l *logger) Level() Level {
